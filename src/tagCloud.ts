@@ -95,6 +95,7 @@ export class TagCloud {
                 };
                 $img.onerror = reject;
             })
+            $img.crossOrigin = 'anonymous';
             $img.src = maskImage;
         }
         this.$container.append(this.$canvas);
