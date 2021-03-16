@@ -21,6 +21,8 @@ export interface Tag {
   color?: string;
 }
 
+export type Pixels = number[][];
+
 export interface TagData extends Tag {
   angle: number;
   fontSize: number;
@@ -36,7 +38,7 @@ export class TagCloud {
     height: 200,
     maskImage: false,
     debug: false,
-    pixelRatio: 4,
+    pixelRatio: 6,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,
@@ -51,10 +53,10 @@ export class TagCloud {
   private $canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
 
-  private $offsetscreenCanvas: HTMLCanvasElement;
+  private $offscreenCanvas: HTMLCanvasElement;
   private offscreenCtx: CanvasRenderingContext2D;
 
-  private pixels: number[][] = [];
+  private pixels: Pixels = [];
 
   private maxTagWeight = 0;
   private minTagWeight = Infinity;
@@ -71,10 +73,10 @@ export class TagCloud {
     this.$canvas.height = height;
     this.ctx = this.$canvas.getContext("2d")!;
 
-    this.$offsetscreenCanvas = document.createElement("canvas");
-    this.$offsetscreenCanvas.width = width;
-    this.$offsetscreenCanvas.height = height;
-    this.offscreenCtx = this.$offsetscreenCanvas.getContext("2d")!;
+    this.$offscreenCanvas = document.createElement("canvas");
+    this.$offscreenCanvas.width = width;
+    this.$offscreenCanvas.height = height;
+    this.offscreenCtx = this.$offscreenCanvas.getContext("2d")!;
 
     const pixelXLength = Math.ceil(width / pixelRatio);
     const pixelYLength = Math.ceil(height / pixelRatio);
@@ -89,15 +91,21 @@ export class TagCloud {
       const $img: HTMLImageElement = new Image();
       this.promised = new Promise((resolve, reject) => {
         $img.onload = async () => {
-          await this.loadMaskImage($img);
+          this.pixels = await this.loadMaskImage($img);
           resolve();
         };
         $img.onerror = reject;
       });
       $img.crossOrigin = "anonymous";
       $img.src = maskImage;
+    } else {
+      this.pixels = this.generatePixels(width, height);
     }
     this.$container.append(this.$canvas);
+    if (this.options.debug) {
+      this.$offscreenCanvas.style.border = "1px solid #aaaaaa";
+      this.$container.append(this.$offscreenCanvas);
+    }
   }
 
   public destory() {
@@ -127,6 +135,23 @@ export class TagCloud {
       result.push(tagData);
     }
     return result;
+  }
+
+  private generatePixels(
+    width: number,
+    height: number,
+    fill: -1 | 0 = 0
+  ): Pixels {
+    const { pixelRatio } = this.options;
+    const pixelXLength = Math.ceil(width / pixelRatio);
+    const pixelYLength = Math.ceil(height / pixelRatio);
+    const pixels = [];
+
+    const len = Math.ceil(pixelXLength / 32);
+    for (let i = 0; i < pixelYLength; i++) {
+      pixels.push(new Array(len).fill(fill));
+    }
+    return pixels;
   }
 
   private async handleTag(tag: Tag): Promise<TagData> {
@@ -159,10 +184,16 @@ export class TagCloud {
     const color =
       maybeColor === undefined
         ? "#" +
-          (((0xffffff * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
+          (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
         : maybeColor;
 
-    await this.getTagPixels({ text, angle, fontSize, color });
+    const pixels: null | Pixels = await this.getTagPixels({
+      text,
+      angle,
+      fontSize,
+      color
+    });
+    this.printPixels(pixels!);
 
     return {
       text,
@@ -182,59 +213,62 @@ export class TagCloud {
     angle: number;
     fontSize: number;
     color: string;
-  }): Promise<void> {
-    this.ctx.save();
-    const theta = (angle * Math.PI) / 180;
+  }): Promise<null | Pixels> {
+    this.offscreenCtx.save();
+    const theta = (-angle * Math.PI) / 180;
     const cosTheta = Math.cos(theta);
     const sinTheta = Math.sin(theta);
-    // this.ctx.rotate(theta);
-    this.ctx.font = `${fontSize}px ${this.options.family}`;
+    this.offscreenCtx.font = `${fontSize}px ${this.options.family}`;
     const {
       actualBoundingBoxLeft,
       actualBoundingBoxRight,
       actualBoundingBoxAscent,
       actualBoundingBoxDescent
-    }: TextMetrics = this.ctx.measureText(text);
+    }: TextMetrics = this.offscreenCtx.measureText(text);
     const width = actualBoundingBoxLeft + actualBoundingBoxRight;
     const height = actualBoundingBoxAscent + actualBoundingBoxDescent;
 
-    const len = height * cosTheta;
-    const x = len * sinTheta;
-    const y = len * cosTheta;
+    const pixelWidth =
+      (Math.abs(height * sinTheta) + Math.abs(width * cosTheta)) >> 0;
+    const pixelHeight =
+      (Math.abs(height * cosTheta) + Math.abs(width * sinTheta)) >> 0;
 
-    // const pixelWidth = 100;
-    // const pixelHeight = 100;
-    // this.ctx.rect(0, 0, pixelWidth, pixelHeight);
-    this.ctx.textAlign = "center";
-    this.ctx.translate(width / 2, height / 2)
-    this.ctx.rotate(theta);
-    this.ctx.fillStyle = color;
-    this.ctx.fillText(text, 0, 0);
-    this.ctx.rect(0, -height, width, height);
+    if (pixelHeight > this.options.height || pixelWidth > this.options.width) {
+      return null;
+    }
 
-    
+    this.offscreenCtx.rect(0, 0, pixelWidth, pixelHeight);
+    this.offscreenCtx.translate(pixelWidth / 2, pixelHeight / 2);
+    this.offscreenCtx.rotate(theta);
+    this.offscreenCtx.fillStyle = color;
+    // this.ctx.rect(-width / 2, -height / 2, width, height);
+    this.offscreenCtx.fillText(
+      text,
+      actualBoundingBoxLeft - width / 2,
+      height / 2 - actualBoundingBoxDescent
+    );
 
-    this.ctx.stroke();
-    this.ctx.restore();
+    this.offscreenCtx.restore();
+
+    const imgData: ImageData = this.offscreenCtx.getImageData(
+      0,
+      0,
+      pixelWidth,
+      pixelHeight
+    );
+
+    return this.getPixelsFromImgData(imgData, 255, 255 * 2);
   }
+  private getPixelsFromImgData(
+    imgData: ImageData,
+    opacityThreshold: number,
+    lightThreshold: number,
+    fill: 0 | -1 = 0
+  ): Pixels {
+    const { pixelRatio, debug } = this.options;
+    const { data, width, height } = imgData;
+    const pixels = this.generatePixels(width, height, fill);
 
-  public getCtx() {
-    return this.offscreenCtx;
-  }
-
-  private async loadMaskImage($maskImage: HTMLImageElement) {
-    const {
-      width,
-      height,
-      opacityThreshold,
-      lightThreshold,
-      pixelRatio,
-      debug
-    } = this.options;
-    if (debug) console.time("loadMaskImage");
-    this.offscreenCtx.drawImage($maskImage, 0, 0, width, height);
-    const imgData = this.offscreenCtx.getImageData(0, 0, width, width);
-    const data = imgData.data;
     const dataXLength = width << 2;
     const dataYLength = height << 2;
 
@@ -269,8 +303,11 @@ export class TagCloud {
           if (light > lightThreshold) {
             continue;
           }
-
-          this.pixels[pixelY][xIndex] &= ~(1 << -(pixelX + 1));
+          if (fill) {
+            pixels[pixelY][xIndex] &= ~(1 << -(pixelX + 1));
+          } else {
+            pixels[pixelY][xIndex] |= 1 << -(pixelX + 1);
+          }
 
           if (debug) {
             this.ctx.fillStyle = "rgba(0,0,255,0.1)";
@@ -292,12 +329,40 @@ export class TagCloud {
         pixelY++;
       }
     }
-
-    if (debug) console.timeEnd("loadMaskImage");
-    // this.printPixels(this.pixels);
+    this.offscreenCtx.clearRect(0, 0, width, height);
+    return pixels;
   }
-  private printPixels(pixels: number[][]): void {
-    for (let i = 0, len = this.pixels.length; i < len; i++) {
+
+  public getCtx(): CanvasRenderingContext2D {
+    return this.ctx;
+  }
+
+  public getOffscreenCtx(): CanvasRenderingContext2D {
+    return this.offscreenCtx;
+  }
+
+  private async loadMaskImage($maskImage: HTMLImageElement): Promise<Pixels> {
+    const {
+      width,
+      height,
+      debug,
+      opacityThreshold,
+      lightThreshold
+    } = this.options;
+    if (debug) console.time("loadMaskImage");
+    this.offscreenCtx.drawImage($maskImage, 0, 0, width, height);
+    const imgData = this.offscreenCtx.getImageData(0, 0, width, width);
+    const pixels = this.getPixelsFromImgData(
+      imgData,
+      opacityThreshold,
+      lightThreshold,
+      -1
+    );
+    if (debug) console.timeEnd("loadMaskImage");
+    return pixels;
+  }
+  private printPixels(pixels: Pixels): void {
+    for (let i = 0, len = pixels.length; i < len; i++) {
       console.log(pixels[i].map(this.binaryIfy).join("") + "_" + i);
     }
   }
