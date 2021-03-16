@@ -7,8 +7,8 @@ const tagCloud = new TagCloud($container, {
   height: 500,
   maskImage: MASK,
   debug: true,
-  minFontSize: 30,
-  maxFontSize: 100,
+  minFontSize: 20,
+  maxFontSize: 40,
   angleCount: 30,
   angleFrom: 240,
   angleTo: 90

@@ -28,6 +28,7 @@ export interface TagData extends Tag {
   fontSize: number;
   x: number;
   y: number;
+  rendered: boolean;
 }
 
 const ZERO_STR = "00000000000000000000000000000000";
@@ -38,7 +39,7 @@ export class TagCloud {
     height: 200,
     maskImage: false,
     debug: false,
-    pixelRatio: 6,
+    pixelRatio: 4,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,
@@ -65,6 +66,8 @@ export class TagCloud {
   constructor($container: HTMLElement, options?: Partial<Options>) {
     this.$container = $container;
     this.options = { ...this.defaultOptions, ...options };
+
+    this.options.pixelRatio = Math.round(Math.max(this.options.pixelRatio, 1));
 
     const { width, height, maskImage, pixelRatio } = this.options;
 
@@ -161,7 +164,9 @@ export class TagCloud {
       maxFontSize,
       angleCount,
       angleFrom,
-      angleTo
+      angleTo,
+      width,
+      height
     } = this.options;
     const { text, weight, angle: maybeAngle, color: maybeColor } = tag;
 
@@ -193,14 +198,33 @@ export class TagCloud {
       fontSize,
       color
     });
-    this.printPixels(pixels!);
 
-    return {
+    const result = {
       text,
       weight,
       fontSize,
-      angle
+      angle,
+      x: 0,
+      y: 0,
+      rendered: false
     };
+    if (pixels === null) return result;
+
+    // this.printPixels(pixels);
+   
+    
+    const x = Math.random() * width >> 0;
+    const y = Math.random() * height >> 0;
+    console.log(x, y);
+
+    // await placeTag()
+
+
+    return result;
+  }
+
+  private async placeTag() {
+
   }
 
   private async getTagPixels({
@@ -236,12 +260,16 @@ export class TagCloud {
     if (pixelHeight > this.options.height || pixelWidth > this.options.width) {
       return null;
     }
+    this.offscreenCtx.clearRect(0, 0, pixelWidth, pixelHeight);
 
-    this.offscreenCtx.rect(0, 0, pixelWidth, pixelHeight);
+    // this.offscreenCtx.rect(0, 0, pixelWidth, pixelHeight);
+
     this.offscreenCtx.translate(pixelWidth / 2, pixelHeight / 2);
     this.offscreenCtx.rotate(theta);
     this.offscreenCtx.fillStyle = color;
+    
     // this.ctx.rect(-width / 2, -height / 2, width, height);
+    
     this.offscreenCtx.fillText(
       text,
       actualBoundingBoxLeft - width / 2,
@@ -257,7 +285,7 @@ export class TagCloud {
       pixelHeight
     );
 
-    return this.getPixelsFromImgData(imgData, 255, 255 * 2);
+    return this.getPixelsFromImgData(imgData, 2, 255 * 3);
   }
   private getPixelsFromImgData(
     imgData: ImageData,
@@ -270,7 +298,7 @@ export class TagCloud {
     const pixels = this.generatePixels(width, height, fill);
 
     const dataXLength = width << 2;
-    const dataYLength = height << 2;
+    const dataYLength = height;
 
     const pixelXLength = Math.ceil(width / pixelRatio);
     const pixelYLength = Math.ceil(height / pixelRatio);
@@ -279,8 +307,8 @@ export class TagCloud {
     let pixelX = 0;
     let pixelY = 0;
 
-    const edgeXLength = dataXLength % pixelRatio || pixelRatio;
-    const edgeYLength = dataYLength % pixelRatio || pixelRatio;
+    const edgeXLength = width % pixelRatio || pixelRatio;
+    const edgeYLength = height % pixelRatio || pixelRatio;
     while (pixelCount--) {
       const outerOffset =
         pixelY * pixelRatio * dataXLength + ((pixelX * pixelRatio) << 2);
@@ -303,6 +331,7 @@ export class TagCloud {
           if (light > lightThreshold) {
             continue;
           }
+          
           if (fill) {
             pixels[pixelY][xIndex] &= ~(1 << -(pixelX + 1));
           } else {
@@ -329,7 +358,6 @@ export class TagCloud {
         pixelY++;
       }
     }
-    this.offscreenCtx.clearRect(0, 0, width, height);
     return pixels;
   }
 
@@ -349,7 +377,10 @@ export class TagCloud {
       opacityThreshold,
       lightThreshold
     } = this.options;
+
     if (debug) console.time("loadMaskImage");
+
+    this.offscreenCtx.clearRect(0, 0, width, height);
     this.offscreenCtx.drawImage($maskImage, 0, 0, width, height);
     const imgData = this.offscreenCtx.getImageData(0, 0, width, width);
     const pixels = this.getPixelsFromImgData(
@@ -358,10 +389,12 @@ export class TagCloud {
       lightThreshold,
       -1
     );
+  
     if (debug) console.timeEnd("loadMaskImage");
     return pixels;
   }
-  private printPixels(pixels: Pixels): void {
+  private printPixels(pixels: Pixels | null): void {
+    if (pixels === null) return;
     for (let i = 0, len = pixels.length; i < len; i++) {
       console.log(pixels[i].map(this.binaryIfy).join("") + "_" + i);
     }
@@ -369,7 +402,7 @@ export class TagCloud {
   private binaryIfy(num: number): string {
     if (num >= 0) {
       const numStr = num.toString(2);
-      return ZERO_STR.slice(0, 32 - numStr.length) + numStr;
+      return (ZERO_STR.slice(0, 32 - numStr.length) + numStr);
     }
     return (Math.pow(2, 32) + num).toString(2);
   }
