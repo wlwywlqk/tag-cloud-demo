@@ -32,6 +32,7 @@ export interface TagData extends Tag {
 }
 
 const ZERO_STR = "00000000000000000000000000000000";
+const SQRT_2 = Math.sqrt(2);
 
 export class TagCloud {
   private readonly defaultOptions: Options = {
@@ -39,7 +40,7 @@ export class TagCloud {
     height: 200,
     maskImage: false,
     debug: false,
-    pixelRatio: 4,
+    pixelRatio: 8,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,
@@ -119,6 +120,7 @@ export class TagCloud {
 
   public async draw(tags: Tag[] = []): Promise<TagData[]> {
     if (tags.length === 0) return [];
+    if (this.options.debug) console.time('draw');
     const result: TagData[] = [];
     await this.promised;
     for (let i = 0, len = tags.length; i < len; i++) {
@@ -137,6 +139,8 @@ export class TagCloud {
       const tagData = await this.handleTag(sortTags[i]);
       result.push(tagData);
     }
+    if (this.options.debug) console.timeEnd('draw');
+
     return result;
   }
 
@@ -174,10 +178,10 @@ export class TagCloud {
     const fontSize =
       diffWeight > 0
         ? Math.round(
-            minFontSize +
-              (maxFontSize - minFontSize) *
-                ((weight - minTagWeight) / diffWeight)
-          )
+          minFontSize +
+          (maxFontSize - minFontSize) *
+          ((weight - minTagWeight) / diffWeight)
+        )
         : Math.round((maxFontSize + minFontSize) / 2);
 
     const randomNum = (Math.random() * angleCount) >> 0;
@@ -189,7 +193,7 @@ export class TagCloud {
     const color =
       maybeColor === undefined
         ? "#" +
-          (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
+        (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
         : maybeColor;
 
     const pixels: null | Pixels = await this.getTagPixels({
@@ -204,27 +208,81 @@ export class TagCloud {
       weight,
       fontSize,
       angle,
-      x: 0,
-      y: 0,
+      x: -1,
+      y: -1,
       rendered: false
     };
     if (pixels === null) return result;
 
     // this.printPixels(pixels);
-   
-    
-    const x = Math.random() * width >> 0;
-    const y = Math.random() * height >> 0;
-    console.log(x, y);
 
-    // await placeTag()
+    const [x, y] = await this.placeTag(pixels);
 
 
     return result;
   }
 
-  private async placeTag() {
+  private async placeTag(pixels: Pixels): Promise<[number, number]> {
+    const { width, height, pixelRatio } = this.options;
 
+
+    const halfPixelRatio = pixelRatio / 2;
+
+    const startX = Math.random() * width >> 0;
+    const startY = Math.random() * height >> 0;
+
+    const longerX = Math.max(startX, width - startX);
+    const longerY = Math.max(startY, height - startY);
+
+    const endR = Math.sqrt(longerX * longerX + longerY * longerY);
+
+
+    let x = startX;
+    let y = startY;
+
+    const dir = Math.random() < .5 ? 1 : -1;
+
+    // while(!await this.tryPlaceTagAt(x, y)) {
+
+
+    // }
+
+    let r = halfPixelRatio;
+    let step = 1;
+
+    let deg = 0;
+
+    this.ctx.save()
+    this.ctx.fillStyle = 'red';
+    this.ctx.fillRect(startX, startY, pixelRatio, pixelRatio)
+    this.ctx.restore()
+    // 螺旋遍历坐标，
+    while (r < endR) {
+      let rest = step;
+      let degStep = Math.PI / step;
+
+      deg = (step & 1 ? 0 : Math.PI) + degStep;
+
+      while (rest--) {
+        x = startX + Math.cos(deg) * r >> 0;
+        y = startY + Math.sin(deg) * r >> 0;
+        deg += degStep;
+        if (x < 0 || x > width || y < 0 || y > height) continue;
+
+
+        // this.ctx.fillRect(x, y, pixelRatio / 2, pixelRatio / 2);
+        this.ctx.fillRect((x / pixelRatio >> 0) * pixelRatio, (y / pixelRatio >> 0) * pixelRatio, pixelRatio - .3, pixelRatio - .3);
+
+      }
+      step++;
+
+      r += pixelRatio / 2;
+    }
+    return [x, y];
+  }
+
+  private async tryPlaceTagAt(x: number, y: number): Promise<boolean> {
+    return false;
   }
 
   private async getTagPixels({
@@ -267,9 +325,9 @@ export class TagCloud {
     this.offscreenCtx.translate(pixelWidth / 2, pixelHeight / 2);
     this.offscreenCtx.rotate(theta);
     this.offscreenCtx.fillStyle = color;
-    
+
     // this.ctx.rect(-width / 2, -height / 2, width, height);
-    
+
     this.offscreenCtx.fillText(
       text,
       actualBoundingBoxLeft - width / 2,
@@ -298,7 +356,6 @@ export class TagCloud {
     const pixels = this.generatePixels(width, height, fill);
 
     const dataXLength = width << 2;
-    const dataYLength = height;
 
     const pixelXLength = Math.ceil(width / pixelRatio);
     const pixelYLength = Math.ceil(height / pixelRatio);
@@ -331,7 +388,7 @@ export class TagCloud {
           if (light > lightThreshold) {
             continue;
           }
-          
+
           if (fill) {
             pixels[pixelY][xIndex] &= ~(1 << -(pixelX + 1));
           } else {
@@ -389,7 +446,7 @@ export class TagCloud {
       lightThreshold,
       -1
     );
-  
+
     if (debug) console.timeEnd("loadMaskImage");
     return pixels;
   }
