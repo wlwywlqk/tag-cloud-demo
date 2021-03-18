@@ -235,7 +235,7 @@ export class TagCloud {
     let x = startX;
     let y = startY;
 
-    if (this.tryPlaceTagAt(x, y)) {
+    if (this.tryPlaceTag(pixels, x, y)) {
       return [x, y]
     }
 
@@ -246,30 +246,49 @@ export class TagCloud {
 
     while ((step >> 1) < endLen) {
       let rest = step;
-      while (rest--) {
+      if (y < 0 || y > height) {
+        x += xDir * pixelRatio * rest;
+      } else while (rest--) {
         x += xDir * pixelRatio;
         if (x < 0 || x > width) continue;
-        if (this.tryPlaceTagAt(x, y)) {
-          return [x, y]
+        if (this.tryPlaceTag(pixels, x, y)) {
+          return [x, y];
         }
       }
+      
       xDir = -xDir;
       rest = step;
-      while (rest--) {
+
+      if (x < 0 || x > width) {
+        y += yDir * pixelRatio * rest;
+      } else while (rest--) {
         y += yDir * pixelRatio;
         if (y < 0 || y > height) continue;
 
-        if (this.tryPlaceTagAt(x, y)) {
-          return [x, y]
+        if (this.tryPlaceTag(pixels, x, y)) {
+          return [x, y];
         }
       }
+
       yDir = -yDir;
       step++;
     }
     return [-1, -1];
   }
 
-  private tryPlaceTagAt(x: number, y: number): boolean {
+  private tryPlaceTag(pixels: Pixels, x: number, y: number): boolean {
+    const { pixelRatio } = this.options;
+    const pixelsX = x / pixelRatio >> 0;
+    const pixelsY = y / pixelRatio >> 0;
+    const offsetX = pixelsX % 32;
+    const xx = pixelsX / 32 >> 0;
+
+
+    for (let i = 0, len = pixels.length; i < len; i++) {
+      for (let j = 0, len = pixels[i].length; j < len; j++) {
+        this.pixels[pixelsY + i][xx + j]
+      }
+    }
     return false;
   }
 
