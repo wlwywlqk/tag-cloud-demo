@@ -76,11 +76,13 @@ export class TagCloud {
     this.$canvas.width = width;
     this.$canvas.height = height;
     this.ctx = this.$canvas.getContext("2d")!;
+    this.ctx.textAlign = 'center';
 
     this.$offscreenCanvas = document.createElement("canvas");
     this.$offscreenCanvas.width = width;
     this.$offscreenCanvas.height = height;
     this.offscreenCtx = this.$offscreenCanvas.getContext("2d")!;
+    this.offscreenCtx.textAlign = 'center';
 
     const pixelXLength = Math.ceil(width / pixelRatio);
     const pixelYLength = Math.ceil(height / pixelRatio);
@@ -94,8 +96,8 @@ export class TagCloud {
     if (maskImage) {
       const $img: HTMLImageElement = new Image();
       this.promised = new Promise((resolve, reject) => {
-        $img.onload = async () => {
-          this.pixels = await this.loadMaskImage($img);
+        $img.onload = () => {
+          this.pixels = this.loadMaskImage($img);
           resolve();
         };
         $img.onerror = reject;
@@ -161,7 +163,7 @@ export class TagCloud {
     return pixels;
   }
 
-  private async handleTag(tag: Tag): Promise<TagData> {
+  private handleTag(tag: Tag): TagData {
     const { minTagWeight, maxTagWeight } = this;
     const {
       minFontSize,
@@ -196,7 +198,7 @@ export class TagCloud {
         (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
         : maybeColor;
 
-    const pixels: null | Pixels = await this.getTagPixels({
+    const pixels: null | Pixels = this.getTagPixels({
       text,
       angle,
       fontSize,
@@ -216,76 +218,62 @@ export class TagCloud {
 
     // this.printPixels(pixels);
 
-    const [x, y] = await this.placeTag(pixels);
-
+    const [x, y] = this.placeTag(pixels);
 
     return result;
   }
 
-  private async placeTag(pixels: Pixels): Promise<[number, number]> {
+  private placeTag(pixels: Pixels): [number, number] {
     const { width, height, pixelRatio } = this.options;
 
-
-    const halfPixelRatio = pixelRatio / 2;
 
     const startX = Math.random() * width >> 0;
     const startY = Math.random() * height >> 0;
 
-    const longerX = Math.max(startX, width - startX);
-    const longerY = Math.max(startY, height - startY);
-
-    const endR = Math.sqrt(longerX * longerX + longerY * longerY);
-
+    const endLen = Math.max(startX, width - startX, startY, height - startY) / pixelRatio + 1 >> 0;
 
     let x = startX;
     let y = startY;
 
-    const dir = Math.random() < .5 ? 1 : -1;
+    if (this.tryPlaceTagAt(x, y)) {
+      return [x, y]
+    }
 
-    // while(!await this.tryPlaceTagAt(x, y)) {
-
-
-    // }
-
-    let r = halfPixelRatio;
     let step = 1;
 
-    let deg = 0;
+    let xDir = Math.random() < 0.5 ? 1 :  -1;
+    let yDir = Math.random() < 0.5 ? 1 :  -1;
 
-    this.ctx.save()
-    this.ctx.fillStyle = 'red';
-    this.ctx.fillRect(startX, startY, pixelRatio, pixelRatio)
-    this.ctx.restore()
-    // 螺旋遍历坐标，
-    while (r < endR) {
+    while ((step >> 1) < endLen) {
       let rest = step;
-      let degStep = Math.PI / step;
-
-      deg = (step & 1 ? 0 : Math.PI) + degStep;
-
       while (rest--) {
-        x = startX + Math.cos(deg) * r >> 0;
-        y = startY + Math.sin(deg) * r >> 0;
-        deg += degStep;
-        if (x < 0 || x > width || y < 0 || y > height) continue;
-
-
-        // this.ctx.fillRect(x, y, pixelRatio / 2, pixelRatio / 2);
-        this.ctx.fillRect((x / pixelRatio >> 0) * pixelRatio, (y / pixelRatio >> 0) * pixelRatio, pixelRatio - .3, pixelRatio - .3);
-
+        x += xDir * pixelRatio;
+        if (x < 0 || x > width) continue;
+        if (this.tryPlaceTagAt(x, y)) {
+          return [x, y]
+        }
       }
-      step++;
+      xDir = -xDir;
+      rest = step;
+      while (rest--) {
+        y += yDir * pixelRatio;
+        if (y < 0 || y > height) continue;
 
-      r += pixelRatio / 2;
+        if (this.tryPlaceTagAt(x, y)) {
+          return [x, y]
+        }
+      }
+      yDir = -yDir;
+      step++;
     }
-    return [x, y];
+    return [-1, -1];
   }
 
-  private async tryPlaceTagAt(x: number, y: number): Promise<boolean> {
+  private tryPlaceTagAt(x: number, y: number): boolean {
     return false;
   }
 
-  private async getTagPixels({
+  private getTagPixels({
     text,
     angle,
     fontSize,
@@ -295,7 +283,7 @@ export class TagCloud {
     angle: number;
     fontSize: number;
     color: string;
-  }): Promise<null | Pixels> {
+  }): null | Pixels {
     this.offscreenCtx.save();
     const theta = (-angle * Math.PI) / 180;
     const cosTheta = Math.cos(theta);
@@ -321,12 +309,15 @@ export class TagCloud {
     this.offscreenCtx.clearRect(0, 0, pixelWidth, pixelHeight);
 
     // this.offscreenCtx.rect(0, 0, pixelWidth, pixelHeight);
+    // this.offscreenCtx.stroke();
+
 
     this.offscreenCtx.translate(pixelWidth / 2, pixelHeight / 2);
     this.offscreenCtx.rotate(theta);
     this.offscreenCtx.fillStyle = color;
 
-    // this.ctx.rect(-width / 2, -height / 2, width, height);
+    // this.offscreenCtx.rect(-width / 2, -height / 2, width, height);
+    // this.offscreenCtx.stroke();
 
     this.offscreenCtx.fillText(
       text,
@@ -426,7 +417,7 @@ export class TagCloud {
     return this.offscreenCtx;
   }
 
-  private async loadMaskImage($maskImage: HTMLImageElement): Promise<Pixels> {
+  private loadMaskImage($maskImage: HTMLImageElement): Pixels {
     const {
       width,
       height,
