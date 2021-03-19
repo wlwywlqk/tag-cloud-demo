@@ -15,7 +15,7 @@ const tagCloud = new TagCloud($container, {
 });
 
 tagCloud.draw([
-  // { text: "aaaaalgaaa", weight: 100, color: "red" },
+  { text: "aaaaalgaaa", weight: 100, color: "red" },
   // { text: "llllllll", weight: 100, color: "blue" },
   // { text: "ab", weight: 110 },
   // { text: "ac", weight: 90 },
@@ -31,7 +31,6 @@ tagCloud.draw([
   // { text: "xsdfa", weight: 20 },
   // { text: "adf", weight: 10 },
   // { text: "dgdfga", weight: 10 },
-  { text: "a", weight: 10 },
   { text: "adfa", weight: 10 },
   { text: "asdffg", weight: 10 }
 ]);

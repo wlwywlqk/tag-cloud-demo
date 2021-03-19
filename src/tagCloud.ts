@@ -12,6 +12,7 @@ export interface Options {
   angleTo: number;
   angleCount: number;
   family: string;
+  cut: boolean,
 }
 
 export interface Tag {
@@ -21,7 +22,11 @@ export interface Tag {
   color?: string;
 }
 
-export type Pixels = number[][];
+export interface Pixels {
+  width: number;
+  height: number;
+  data: number[][];
+}
 
 export interface TagData extends Tag {
   angle: number;
@@ -40,7 +45,7 @@ export class TagCloud {
     height: 200,
     maskImage: false,
     debug: false,
-    pixelRatio: 8,
+    pixelRatio: 1,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,
@@ -48,7 +53,8 @@ export class TagCloud {
     angleFrom: -60,
     angleTo: 60,
     angleCount: 3,
-    family: "sans-serif"
+    family: "sans-serif",
+    cut: true,
   };
   options: Options;
   private $container: HTMLElement;
@@ -58,7 +64,9 @@ export class TagCloud {
   private $offscreenCanvas: HTMLCanvasElement;
   private offscreenCtx: CanvasRenderingContext2D;
 
-  private pixels: Pixels = [];
+  private pixels: Pixels = {
+    width: 0, height: 0, data: []
+  };
 
   private maxTagWeight = 0;
   private minTagWeight = Infinity;
@@ -90,8 +98,10 @@ export class TagCloud {
     const willFill = maskImage ? -1 : 0;
     const pixelLength = Math.ceil(pixelXLength / 32);
     for (let i = 0; i < pixelYLength; i++) {
-      this.pixels.push(new Array(pixelLength).fill(willFill));
+      this.pixels.data.push(new Array(pixelLength).fill(willFill));
     }
+    this.pixels.width = width;
+    this.pixels.height = height;
 
     if (maskImage) {
       const $img: HTMLImageElement = new Image();
@@ -154,13 +164,17 @@ export class TagCloud {
     const { pixelRatio } = this.options;
     const pixelXLength = Math.ceil(width / pixelRatio);
     const pixelYLength = Math.ceil(height / pixelRatio);
-    const pixels = [];
+    const data = [];
 
     const len = Math.ceil(pixelXLength / 32);
     for (let i = 0; i < pixelYLength; i++) {
-      pixels.push(new Array(len).fill(fill));
+      data.push(new Array(len).fill(fill));
     }
-    return pixels;
+    return {
+      width,
+      height,
+      data
+    };
   }
 
   private handleTag(tag: Tag): TagData {
@@ -219,6 +233,41 @@ export class TagCloud {
     // this.printPixels(pixels);
 
     const [x, y] = this.placeTag(pixels);
+    debugger
+
+   if (x !== -1 && y !== -1) {
+    this.ctx.save();
+    const theta = (-angle * Math.PI) / 180;
+    this.ctx.font = `${fontSize}px ${this.options.family}`;
+    const {
+      actualBoundingBoxLeft,
+      actualBoundingBoxRight,
+      actualBoundingBoxAscent,
+      actualBoundingBoxDescent
+    }: TextMetrics = this.ctx.measureText(text);
+    const width = actualBoundingBoxLeft + actualBoundingBoxRight;
+    const height = actualBoundingBoxAscent + actualBoundingBoxDescent;
+    const cosTheta = Math.cos(theta);
+    const sinTheta = Math.sin(theta);
+    this.ctx.font = `${fontSize}px ${this.options.family}`;
+
+    const pixelWidth =
+      (Math.abs(height * sinTheta) + Math.abs(width * cosTheta)) >> 0;
+    const pixelHeight =
+      (Math.abs(height * cosTheta) + Math.abs(width * sinTheta)) >> 0;
+
+    this.ctx.translate(x + pixelWidth / 2, y + pixelHeight / 2);
+    this.ctx.rotate(theta);
+    this.ctx.fillStyle = color;
+
+    this.ctx.fillText(
+      text,
+      actualBoundingBoxLeft - width / 2,
+      height / 2 - actualBoundingBoxDescent
+    );
+
+    this.ctx.restore();
+   }
 
     return result;
   }
@@ -226,9 +275,11 @@ export class TagCloud {
   private placeTag(pixels: Pixels): [number, number] {
     const { width, height, pixelRatio } = this.options;
 
+    // const startX = Math.random() * width >> 0;
+    // const startY = Math.random() * height >> 0;
 
-    const startX = Math.random() * width >> 0;
-    const startY = Math.random() * height >> 0;
+    const startX = (width - pixels.width) / 2 >> 0;
+    const startY = (height - pixels.height) / 2 >> 0;
 
     const endLen = Math.max(startX, width - startX, startY, height - startY) / pixelRatio + 1 >> 0;
 
@@ -241,8 +292,8 @@ export class TagCloud {
 
     let step = 1;
 
-    let xDir = Math.random() < 0.5 ? 1 :  -1;
-    let yDir = Math.random() < 0.5 ? 1 :  -1;
+    let xDir = Math.random() < 0.5 ? 1 : -1;
+    let yDir = Math.random() < 0.5 ? 1 : -1;
 
     while ((step >> 1) < endLen) {
       let rest = step;
@@ -255,7 +306,7 @@ export class TagCloud {
           return [x, y];
         }
       }
-      
+
       xDir = -xDir;
       rest = step;
 
@@ -277,19 +328,64 @@ export class TagCloud {
   }
 
   private tryPlaceTag(pixels: Pixels, x: number, y: number): boolean {
-    const { pixelRatio } = this.options;
+    const { pixelRatio, cut } = this.options;
+
+    const { width, height, data } = pixels;
+    const { data: thisData } = this.pixels;
     const pixelsX = x / pixelRatio >> 0;
     const pixelsY = y / pixelRatio >> 0;
     const offsetX = pixelsX % 32;
+    const fix = offsetX ? 0 : -1;
     const xx = pixelsX / 32 >> 0;
 
 
-    for (let i = 0, len = pixels.length; i < len; i++) {
-      for (let j = 0, len = pixels[i].length; j < len; j++) {
-        this.pixels[pixelsY + i][xx + j]
+    // this.ctx.fillStyle = 'red'
+    // this.ctx.fillRect(x, y, pixelRatio, pixelRatio);
+    // this.ctx.fillStyle = 'yellow'
+
+    const yLen = thisData.length;
+    for (let i = 0, len = data.length; i < len; i++) {
+      if (pixelsY + i >= yLen) {
+        return cut;
+      }
+      const yData = thisData[pixelsY + i];
+      const xLen = yData.length;
+      for (let j = 0, len = data[i].length; j < len; j++) {
+        if (xx + j >= xLen) {
+          if (cut) {
+            break;
+          } else {
+            return false;
+          }
+        }
+        const current = yData[xx + j];
+        const next = (xx + j + 1 >= xLen ? (cut ? 0 : -1) : yData[xx + j + 1]) & fix;
+        if ((current << offsetX | next >>> 32 - offsetX) & data[i][j]) {
+
+          return false
+        }
       }
     }
-    return false;
+
+    for (let i = 0, len = data.length; i < len; i++) {
+      if (pixelsY + i >= yLen) {
+        break;
+      }
+      const yData = thisData[pixelsY + i];
+      const xLen = yData.length;
+      for (let j = 0, len = data[i].length; j < len; j++) {
+        if (xx + j >= xLen) {
+            break;
+        }
+        const target = data[i][j];
+        yData[xx + j] |= target >>> offsetX;
+        if (xx + j + 1 < xLen && offsetX) {
+          yData[xx + j + 1] |= target << 32 - offsetX;
+        }
+      }
+    }
+
+    return true;
   }
 
   private getTagPixels({
@@ -364,6 +460,7 @@ export class TagCloud {
     const { pixelRatio, debug } = this.options;
     const { data, width, height } = imgData;
     const pixels = this.generatePixels(width, height, fill);
+    const { data: pixelsData }  = pixels;
 
     const dataXLength = width << 2;
 
@@ -400,9 +497,9 @@ export class TagCloud {
           }
 
           if (fill) {
-            pixels[pixelY][xIndex] &= ~(1 << -(pixelX + 1));
+            pixelsData[pixelY][xIndex] &= ~(1 << -(pixelX + 1));
           } else {
-            pixels[pixelY][xIndex] |= 1 << -(pixelX + 1);
+            pixelsData[pixelY][xIndex] |= 1 << -(pixelX + 1);
           }
 
           if (debug) {
@@ -425,7 +522,11 @@ export class TagCloud {
         pixelY++;
       }
     }
-    return pixels;
+    return {
+      width,
+      height,
+      data: pixelsData
+    };
   }
 
   public getCtx(): CanvasRenderingContext2D {
@@ -462,15 +563,24 @@ export class TagCloud {
   }
   private printPixels(pixels: Pixels | null): void {
     if (pixels === null) return;
-    for (let i = 0, len = pixels.length; i < len; i++) {
-      console.log(pixels[i].map(this.binaryIfy).join("") + "_" + i);
+    for (let i = 0, len = pixels.data.length; i < len; i++) {
+      console.log(pixels.data[i].map(this.binaryIfy).join("") + "_" + i);
     }
   }
   private binaryIfy(num: number): string {
     if (num >= 0) {
       const numStr = num.toString(2);
-      return (ZERO_STR.slice(0, 32 - numStr.length) + numStr);
+      return (ZERO_STR.slice(0, 32 - numStr.length) + numStr).replace(/0/g, ' ');
     }
-    return (Math.pow(2, 32) + num).toString(2);
+    return (Math.pow(2, 32) + num).toString(2).replace(/0/g, ' ');
   }
+}
+
+window.ZERO_STR = ZERO_STR
+window.bify = function (num) {
+  if (num >= 0) {
+    const numStr = num.toString(2);
+    return (ZERO_STR.slice(0, 32 - numStr.length) + numStr);
+  }
+  return (Math.pow(2, 32) + num).toString(2);
 }
