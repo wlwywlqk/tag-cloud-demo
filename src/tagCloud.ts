@@ -13,6 +13,7 @@ export interface Options {
   angleCount: number;
   family: string;
   cut: boolean,
+  padding: number;
 }
 
 export interface Tag {
@@ -45,7 +46,7 @@ export class TagCloud {
     height: 200,
     maskImage: false,
     debug: false,
-    pixelRatio: 1,
+    pixelRatio: 4,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,
@@ -55,6 +56,7 @@ export class TagCloud {
     angleCount: 3,
     family: "sans-serif",
     cut: true,
+    padding: 10,
   };
   options: Options;
   private $container: HTMLElement;
@@ -75,6 +77,10 @@ export class TagCloud {
   constructor($container: HTMLElement, options?: Partial<Options>) {
     this.$container = $container;
     this.options = { ...this.defaultOptions, ...options };
+
+    if (this.options.angleCount === 1) {
+      this.options.angleCount = 0;
+    }
 
     this.options.pixelRatio = Math.round(Math.max(this.options.pixelRatio, 1));
 
@@ -148,7 +154,9 @@ export class TagCloud {
     const sortTags = tags.sort((a, b) => b.weight - a.weight);
 
     for (let i = 0, len = sortTags.length; i < len; i++) {
-      const tagData = await this.handleTag(sortTags[i]);
+      console.time(`tag_${sortTags[i].text}`);
+      const tagData = this.handleTag(sortTags[i]);
+      console.timeEnd(`tag_${sortTags[i].text}`);
       result.push(tagData);
     }
     if (this.options.debug) console.timeEnd('draw');
@@ -185,8 +193,7 @@ export class TagCloud {
       angleCount,
       angleFrom,
       angleTo,
-      width,
-      height
+      padding
     } = this.options;
     const { text, weight, angle: maybeAngle, color: maybeColor } = tag;
 
@@ -216,7 +223,8 @@ export class TagCloud {
       text,
       angle,
       fontSize,
-      color
+      color,
+      padding,
     });
 
     const result = {
@@ -233,7 +241,6 @@ export class TagCloud {
     // this.printPixels(pixels);
 
     const [x, y] = this.placeTag(pixels);
-    debugger
 
    if (x !== -1 && y !== -1) {
     this.ctx.save();
@@ -334,8 +341,8 @@ export class TagCloud {
     const { data: thisData } = this.pixels;
     const pixelsX = x / pixelRatio >> 0;
     const pixelsY = y / pixelRatio >> 0;
-    const offsetX = pixelsX % 32;
-    const fix = offsetX ? 0 : -1;
+    const offset = pixelsX % 32;
+    const fix = offset ? -1 : 0;
     const xx = pixelsX / 32 >> 0;
 
 
@@ -346,7 +353,11 @@ export class TagCloud {
     const yLen = thisData.length;
     for (let i = 0, len = data.length; i < len; i++) {
       if (pixelsY + i >= yLen) {
-        return cut;
+        if (cut) {
+          break;
+        } else {
+          return false;
+        }
       }
       const yData = thisData[pixelsY + i];
       const xLen = yData.length;
@@ -360,7 +371,7 @@ export class TagCloud {
         }
         const current = yData[xx + j];
         const next = (xx + j + 1 >= xLen ? (cut ? 0 : -1) : yData[xx + j + 1]) & fix;
-        if ((current << offsetX | next >>> 32 - offsetX) & data[i][j]) {
+        if ((current << offset | next >>> 32 - offset) & data[i][j]) {
 
           return false
         }
@@ -378,9 +389,9 @@ export class TagCloud {
             break;
         }
         const target = data[i][j];
-        yData[xx + j] |= target >>> offsetX;
-        if (xx + j + 1 < xLen && offsetX) {
-          yData[xx + j + 1] |= target << 32 - offsetX;
+        yData[xx + j] |= target >>> offset;
+        if (xx + j + 1 < xLen && offset) {
+          yData[xx + j + 1] |= target << 32 - offset;
         }
       }
     }
@@ -392,12 +403,14 @@ export class TagCloud {
     text,
     angle,
     fontSize,
-    color
+    color,
+    padding
   }: {
     text: string;
     angle: number;
     fontSize: number;
     color: string;
+    padding: number;
   }): null | Pixels {
     this.offscreenCtx.save();
     const theta = (-angle * Math.PI) / 180;
@@ -413,10 +426,13 @@ export class TagCloud {
     const width = actualBoundingBoxLeft + actualBoundingBoxRight;
     const height = actualBoundingBoxAscent + actualBoundingBoxDescent;
 
+    const widthWithPadding = width + padding;
+    const heightWithPadding = height + padding;
+
     const pixelWidth =
-      (Math.abs(height * sinTheta) + Math.abs(width * cosTheta)) >> 0;
+      (Math.abs(heightWithPadding * sinTheta) + Math.abs(widthWithPadding * cosTheta)) >> 0;
     const pixelHeight =
-      (Math.abs(height * cosTheta) + Math.abs(width * sinTheta)) >> 0;
+      (Math.abs(heightWithPadding * cosTheta) + Math.abs(widthWithPadding * sinTheta)) >> 0;
 
     if (pixelHeight > this.options.height || pixelWidth > this.options.width) {
       return null;
@@ -430,15 +446,21 @@ export class TagCloud {
     this.offscreenCtx.translate(pixelWidth / 2, pixelHeight / 2);
     this.offscreenCtx.rotate(theta);
     this.offscreenCtx.fillStyle = color;
+    this.offscreenCtx.lineWidth = padding;
 
     // this.offscreenCtx.rect(-width / 2, -height / 2, width, height);
     // this.offscreenCtx.stroke();
-
+    this.offscreenCtx.strokeText(
+      text,
+      actualBoundingBoxLeft - width / 2,
+      height / 2 - actualBoundingBoxDescent
+    );
     this.offscreenCtx.fillText(
       text,
       actualBoundingBoxLeft - width / 2,
       height / 2 - actualBoundingBoxDescent
     );
+   
 
     this.offscreenCtx.restore();
 
@@ -550,6 +572,7 @@ export class TagCloud {
 
     this.offscreenCtx.clearRect(0, 0, width, height);
     this.offscreenCtx.drawImage($maskImage, 0, 0, width, height);
+    // this.offscreenCtx.fillRect(0,0,100,100)
     const imgData = this.offscreenCtx.getImageData(0, 0, width, width);
     const pixels = this.getPixelsFromImgData(
       imgData,
