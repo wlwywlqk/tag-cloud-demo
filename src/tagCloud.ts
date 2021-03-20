@@ -38,12 +38,11 @@ export interface TagData extends Tag {
 }
 
 const ZERO_STR = "00000000000000000000000000000000";
-const SQRT_2 = Math.sqrt(2);
 
 export class TagCloud {
   private readonly defaultOptions: Options = {
-    width: 200,
-    height: 200,
+    width: 500,
+    height: 500,
     maskImage: false,
     debug: false,
     pixelRatio: 4,
@@ -78,13 +77,9 @@ export class TagCloud {
     this.$container = $container;
     this.options = { ...this.defaultOptions, ...options };
 
-    if (this.options.angleCount === 1) {
-      this.options.angleCount = 0;
-    }
-
     this.options.pixelRatio = Math.round(Math.max(this.options.pixelRatio, 1));
 
-    const { width, height, maskImage, pixelRatio } = this.options;
+    const { width, height, maskImage } = this.options;
 
     this.$canvas = document.createElement("canvas");
     this.$canvas.width = width;
@@ -98,16 +93,6 @@ export class TagCloud {
     this.offscreenCtx = this.$offscreenCanvas.getContext("2d")!;
     this.offscreenCtx.textAlign = 'center';
 
-    const pixelXLength = Math.ceil(width / pixelRatio);
-    const pixelYLength = Math.ceil(height / pixelRatio);
-
-    const willFill = maskImage ? -1 : 0;
-    const pixelLength = Math.ceil(pixelXLength / 32);
-    for (let i = 0; i < pixelYLength; i++) {
-      this.pixels.data.push(new Array(pixelLength).fill(willFill));
-    }
-    this.pixels.width = width;
-    this.pixels.height = height;
 
     if (maskImage) {
       const $img: HTMLImageElement = new Image();
@@ -121,7 +106,7 @@ export class TagCloud {
       $img.crossOrigin = "anonymous";
       $img.src = maskImage;
     } else {
-      this.pixels = this.generatePixels(width, height);
+      this.pixels = this.generatePixels(width, height, 0, false);
     }
     this.$container.append(this.$canvas);
     if (this.options.debug) {
@@ -164,19 +149,43 @@ export class TagCloud {
     return result;
   }
 
+  public shape(cb: (ctx: CanvasRenderingContext2D) => void) {
+    const {
+      width,
+      height,
+      debug,
+    } = this.options;
+    this.offscreenCtx.clearRect(0, 0, width, height);
+    cb(this.offscreenCtx);
+    const imgData = this.offscreenCtx.getImageData(0, 0, width, width);
+    this.pixels = this.getPixelsFromImgData(
+      imgData,
+      2,
+      255 * 3,
+      -1,
+      false
+    );
+  }
+
   private generatePixels(
     width: number,
     height: number,
-    fill: -1 | 0 = 0
+    fill: -1 | 0 = 0,
+    forTag: boolean = true,
   ): Pixels {
-    const { pixelRatio } = this.options;
+    const { pixelRatio, cut } = this.options;
     const pixelXLength = Math.ceil(width / pixelRatio);
     const pixelYLength = Math.ceil(height / pixelRatio);
     const data = [];
 
     const len = Math.ceil(pixelXLength / 32);
+    const tailOffset = pixelXLength % 32;
+    const tailFill = (forTag || tailOffset === 0) ? fill : cut ? fill & (-1 << 32 - tailOffset) : fill | (-1 >>> tailOffset);
+
     for (let i = 0; i < pixelYLength; i++) {
-      data.push(new Array(len).fill(fill));
+      const xData = new Array(len).fill(fill);
+      xData[len - 1] = tailFill;
+      data.push(xData);
     }
     return {
       width,
@@ -210,7 +219,7 @@ export class TagCloud {
     const randomNum = (Math.random() * angleCount) >> 0;
     const angle =
       maybeAngle === undefined
-        ? angleFrom + (randomNum / (angleCount - 1)) * (angleTo - angleFrom)
+        ? (angleCount === 1) ? angleFrom : (angleFrom + (randomNum / (angleCount - 1)) * (angleTo - angleFrom))
         : maybeAngle;
 
     const color =
@@ -241,40 +250,42 @@ export class TagCloud {
     // this.printPixels(pixels);
 
     const [x, y] = this.placeTag(pixels);
+    if (x !== -1 && y !== -1) {
+      this.ctx.save();
+      const theta = (-angle * Math.PI) / 180;
+      this.ctx.font = `${fontSize}px ${this.options.family}`;
+      const {
+        actualBoundingBoxLeft,
+        actualBoundingBoxRight,
+        actualBoundingBoxAscent,
+        actualBoundingBoxDescent
+      }: TextMetrics = this.ctx.measureText(text);
+      const width = actualBoundingBoxLeft + actualBoundingBoxRight;
+      const height = actualBoundingBoxAscent + actualBoundingBoxDescent;
+      const cosTheta = Math.cos(theta);
+      const sinTheta = Math.sin(theta);
+      this.ctx.font = `${fontSize}px ${this.options.family}`;
 
-   if (x !== -1 && y !== -1) {
-    this.ctx.save();
-    const theta = (-angle * Math.PI) / 180;
-    this.ctx.font = `${fontSize}px ${this.options.family}`;
-    const {
-      actualBoundingBoxLeft,
-      actualBoundingBoxRight,
-      actualBoundingBoxAscent,
-      actualBoundingBoxDescent
-    }: TextMetrics = this.ctx.measureText(text);
-    const width = actualBoundingBoxLeft + actualBoundingBoxRight;
-    const height = actualBoundingBoxAscent + actualBoundingBoxDescent;
-    const cosTheta = Math.cos(theta);
-    const sinTheta = Math.sin(theta);
-    this.ctx.font = `${fontSize}px ${this.options.family}`;
+      const widthWithPadding = width + padding;
+      const heightWithPadding = height + padding;
 
-    const pixelWidth =
-      (Math.abs(height * sinTheta) + Math.abs(width * cosTheta)) >> 0;
-    const pixelHeight =
-      (Math.abs(height * cosTheta) + Math.abs(width * sinTheta)) >> 0;
+      const pixelWidth =
+        (Math.abs(heightWithPadding * sinTheta) + Math.abs(widthWithPadding * cosTheta)) >> 0;
+      const pixelHeight =
+        (Math.abs(heightWithPadding * cosTheta) + Math.abs(widthWithPadding * sinTheta)) >> 0;
 
-    this.ctx.translate(x + pixelWidth / 2, y + pixelHeight / 2);
-    this.ctx.rotate(theta);
-    this.ctx.fillStyle = color;
+      this.ctx.translate(x + pixelWidth / 2, y + pixelHeight / 2);
+      this.ctx.rotate(theta);
+      this.ctx.fillStyle = color;
 
-    this.ctx.fillText(
-      text,
-      actualBoundingBoxLeft - width / 2,
-      height / 2 - actualBoundingBoxDescent
-    );
+      this.ctx.fillText(
+        text,
+        actualBoundingBoxLeft - width / 2,
+        height / 2 - actualBoundingBoxDescent
+      );
 
-    this.ctx.restore();
-   }
+      this.ctx.restore();
+    }
 
     return result;
   }
@@ -301,14 +312,14 @@ export class TagCloud {
 
     let xDir = Math.random() < 0.5 ? 1 : -1;
     let yDir = Math.random() < 0.5 ? 1 : -1;
-
+    const { width: pixelsWidth, height: pixelsHeight } = pixels;
     while ((step >> 1) < endLen) {
       let rest = step;
-      if (y < 0 || y > height) {
+      if (y < -pixelsHeight || y > height) {
         x += xDir * pixelRatio * rest;
       } else while (rest--) {
         x += xDir * pixelRatio;
-        if (x < 0 || x > width) continue;
+        if (x < -pixelsWidth || x > width) continue;
         if (this.tryPlaceTag(pixels, x, y)) {
           return [x, y];
         }
@@ -317,11 +328,11 @@ export class TagCloud {
       xDir = -xDir;
       rest = step;
 
-      if (x < 0 || x > width) {
+      if (x < -pixelsWidth || x > width) {
         y += yDir * pixelRatio * rest;
       } else while (rest--) {
         y += yDir * pixelRatio;
-        if (y < 0 || y > height) continue;
+        if (y < -pixelsHeight || y > height) continue;
 
         if (this.tryPlaceTag(pixels, x, y)) {
           return [x, y];
@@ -336,66 +347,37 @@ export class TagCloud {
 
   private tryPlaceTag(pixels: Pixels, x: number, y: number): boolean {
     const { pixelRatio, cut } = this.options;
-
     const { width, height, data } = pixels;
     const { data: thisData } = this.pixels;
-    const pixelsX = x / pixelRatio >> 0;
-    const pixelsY = y / pixelRatio >> 0;
+    const pixelsX = Math.floor(x / pixelRatio);
+    const pixelsY = Math.floor(y / pixelRatio);
     const offset = pixelsX % 32;
     const fix = offset ? -1 : 0;
-    const xx = pixelsX / 32 >> 0;
-
-
-    // this.ctx.fillStyle = 'red'
-    // this.ctx.fillRect(x, y, pixelRatio, pixelRatio);
-    // this.ctx.fillStyle = 'yellow'
-
-    const yLen = thisData.length;
+    const xx = Math.floor(pixelsX / 32);
+    const out = cut ? 0 : -1;
     for (let i = 0, len = data.length; i < len; i++) {
-      if (pixelsY + i >= yLen) {
-        if (cut) {
-          break;
-        } else {
-          return false;
-        }
-      }
-      const yData = thisData[pixelsY + i];
-      const xLen = yData.length;
+      const yData = thisData[pixelsY + i] === undefined ? [] : thisData[pixelsY + i];
       for (let j = 0, len = data[i].length; j < len; j++) {
-        if (xx + j >= xLen) {
-          if (cut) {
-            break;
-          } else {
-            return false;
-          }
-        }
-        const current = yData[xx + j];
-        const next = (xx + j + 1 >= xLen ? (cut ? 0 : -1) : yData[xx + j + 1]) & fix;
+        const current = yData[xx + j] === undefined ? out : yData[xx + j];
+        const next = (yData[xx + j + 1] === undefined ? out : yData[xx + j + 1]) & fix;
         if ((current << offset | next >>> 32 - offset) & data[i][j]) {
-
           return false
         }
       }
     }
 
     for (let i = 0, len = data.length; i < len; i++) {
-      if (pixelsY + i >= yLen) {
-        break;
-      }
-      const yData = thisData[pixelsY + i];
-      const xLen = yData.length;
+      const yData = thisData[pixelsY + i] === undefined ? [] : thisData[pixelsY + i];
       for (let j = 0, len = data[i].length; j < len; j++) {
-        if (xx + j >= xLen) {
-            break;
-        }
         const target = data[i][j];
-        yData[xx + j] |= target >>> offset;
-        if (xx + j + 1 < xLen && offset) {
+        if (yData[xx + j] !== undefined) {
+          yData[xx + j] |= target >>> offset;
+        }
+        if (yData[xx + j + 1] !== undefined && offset) {
           yData[xx + j + 1] |= target << 32 - offset;
         }
       }
     }
-
     return true;
   }
 
@@ -460,7 +442,7 @@ export class TagCloud {
       actualBoundingBoxLeft - width / 2,
       height / 2 - actualBoundingBoxDescent
     );
-   
+
 
     this.offscreenCtx.restore();
 
@@ -477,12 +459,13 @@ export class TagCloud {
     imgData: ImageData,
     opacityThreshold: number,
     lightThreshold: number,
-    fill: 0 | -1 = 0
+    fill: 0 | -1 = 0,
+    forTag: boolean = true
   ): Pixels {
-    const { pixelRatio, debug } = this.options;
+    const { pixelRatio, debug, cut } = this.options;
     const { data, width, height } = imgData;
-    const pixels = this.generatePixels(width, height, fill);
-    const { data: pixelsData }  = pixels;
+    const pixels = this.generatePixels(width, height, fill, forTag);
+    const { data: pixelsData } = pixels;
 
     const dataXLength = width << 2;
 
@@ -527,8 +510,8 @@ export class TagCloud {
           if (debug) {
             this.ctx.fillStyle = "rgba(0,0,255,0.1)";
             this.ctx.fillRect(
-              pixelX * pixelRatio,
-              pixelY * pixelRatio,
+              pixelX * pixelRatio + .2,
+              pixelY * pixelRatio + .2,
               pixelRatio - 0.2,
               pixelRatio - 0.2
             );
@@ -572,13 +555,13 @@ export class TagCloud {
 
     this.offscreenCtx.clearRect(0, 0, width, height);
     this.offscreenCtx.drawImage($maskImage, 0, 0, width, height);
-    // this.offscreenCtx.fillRect(0,0,100,100)
     const imgData = this.offscreenCtx.getImageData(0, 0, width, width);
     const pixels = this.getPixelsFromImgData(
       imgData,
       opacityThreshold,
       lightThreshold,
-      -1
+      -1,
+      false
     );
 
     if (debug) console.timeEnd("loadMaskImage");
@@ -587,23 +570,14 @@ export class TagCloud {
   private printPixels(pixels: Pixels | null): void {
     if (pixels === null) return;
     for (let i = 0, len = pixels.data.length; i < len; i++) {
-      console.log(pixels.data[i].map(this.binaryIfy).join("") + "_" + i);
+      console.log(pixels.data[i].map(this.binaryStrIfy).join("") + "_" + i);
     }
   }
-  private binaryIfy(num: number): string {
+  private binaryStrIfy(num: number): string {
     if (num >= 0) {
       const numStr = num.toString(2);
-      return (ZERO_STR.slice(0, 32 - numStr.length) + numStr).replace(/0/g, ' ');
+      return (ZERO_STR.slice(0, 32 - numStr.length) + numStr);
     }
-    return (Math.pow(2, 32) + num).toString(2).replace(/0/g, ' ');
+    return (Math.pow(2, 32) + num).toString(2);
   }
-}
-
-window.ZERO_STR = ZERO_STR
-window.bify = function (num) {
-  if (num >= 0) {
-    const numStr = num.toString(2);
-    return (ZERO_STR.slice(0, 32 - numStr.length) + numStr);
-  }
-  return (Math.pow(2, 32) + num).toString(2);
 }
