@@ -43,7 +43,7 @@ export class TagCloud {
     width: 0,
     height: 0,
     maskImage: false,
-    pixelRatio: 4,
+    pixelRatio: 8,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,

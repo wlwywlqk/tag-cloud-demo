@@ -11,7 +11,6 @@ const tagCloud = new TagCloud($container, {
   angleCount: 6,
   angleFrom: -60,
   angleTo: 60,
-  pixelRatio: 4,
   padding: 5,
   family: 'zillaslab'
 });
