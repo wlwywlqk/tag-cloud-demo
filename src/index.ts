@@ -1,18 +1,18 @@
 import { TagCloud, TagData } from "./tagCloud";
 import MASK from "./panda.png";
-const $container: HTMLElement = document.querySelector("#app")!;
+const $container = document.querySelector("#app")! as HTMLElement;
 
 const tagCloud = new TagCloud($container, {
   width: 500,
   height: 500,
   // maskImage: MASK,
   minFontSize: 16,
-  maxFontSize: 40,
+  maxFontSize: 90,
   angleCount: 6,
   angleFrom: -60,
   angleTo: 60,
-  padding: 5,
-  family: 'zillaslab'
+  padding: 4,
+  family: "zillaslab"
 });
 
 // tagCloud.shape((ctx: CanvasRenderingContext2D) => {
@@ -21,8 +21,8 @@ const tagCloud = new TagCloud($container, {
 // });
 
 tagCloud.click((tag: TagData) => {
-  console.log(tag)
-})
+  console.log(tag);
+});
 
 tagCloud.draw([
   { text: "Web", weight: 100 },
@@ -33,7 +33,8 @@ tagCloud.draw([
   { text: "React", weight: 10 },
   { text: "Vue", weight: 10 },
   { text: "AngularJS", weight: 10 },
-  { text: "React", weight: 10 },
+  { text: "易", weight: 10 },
+  { text: "烫烫烫", weight: 10 },
   { text: "NestJs", weight: 10 },
   { text: "C", weight: 20 },
   { text: "Babel", weight: 20 },
@@ -56,12 +57,16 @@ tagCloud.draw([
   { text: "Image", weight: 20 },
   { text: "Text", weight: 20 },
   { text: "Set", weight: 20 },
+  { text: "extends", weight: 20 },
+  { text: "Map", weight: 20 },
   { text: "Map", weight: 20 },
   { text: "WeakMap", weight: 20 },
   { text: "Number", weight: 20 },
   { text: "Promise", weight: 20 },
   { text: "then", weight: 20 },
   { text: "DOM", weight: 20 },
+  { text: "new", weight: 20 },
+  { text: "throw", weight: 20 },
   { text: "throw", weight: 20 },
   { text: "define", weight: 20 },
   { text: "center", weight: 20 },
@@ -80,6 +85,5 @@ tagCloud.draw([
   { text: "Data", weight: 20 },
   { text: "SVG", weight: 20 },
   { text: "loading...", weight: 20 },
-  { text: "const", weight: 10 },
-
+  { text: "const", weight: 10 }
 ]);

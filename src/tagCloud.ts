@@ -11,7 +11,7 @@ export interface Options {
   angleTo: number;
   angleCount: number;
   family: string;
-  cut: boolean,
+  cut: boolean;
   padding: number;
 }
 
@@ -43,7 +43,7 @@ export class TagCloud {
     width: 0,
     height: 0,
     maskImage: false,
-    pixelRatio: 8,
+    pixelRatio: 4,
     lightThreshold: ((255 * 3) / 2) >> 0,
     opacityThreshold: 255,
     minFontSize: 10,
@@ -53,7 +53,7 @@ export class TagCloud {
     angleCount: 3,
     family: "sans-serif",
     cut: false,
-    padding: 10,
+    padding: 10
   };
   options: Options;
   private $container: HTMLElement;
@@ -63,7 +63,9 @@ export class TagCloud {
   private listeners: Function[] = [];
 
   private pixels: Pixels = {
-    width: 0, height: 0, data: []
+    width: 0,
+    height: 0,
+    data: []
   };
 
   private maxTagWeight = 0;
@@ -72,13 +74,23 @@ export class TagCloud {
   private promised: Promise<void> = Promise.resolve();
   constructor($container: HTMLElement, options?: Partial<Options>) {
     this.$container = $container;
-    const { width: containerWidth, height: containerHeight } = this.$container.getBoundingClientRect();
+    const {
+      width: containerWidth,
+      height: containerHeight
+    } = this.$container.getBoundingClientRect();
 
-    if (getComputedStyle(this.$container).position === 'static') {
-      this.$container.style.position = 'relative';
+    if (getComputedStyle(this.$container).position === "static") {
+      this.$container.style.position = "relative";
     }
 
-    this.options = { ...this.defaultOptions, ...{ width: Math.floor(containerWidth), height: Math.floor(containerHeight) }, ...options };
+    this.options = {
+      ...this.defaultOptions,
+      ...{
+        width: Math.floor(containerWidth),
+        height: Math.floor(containerHeight)
+      },
+      ...options
+    };
     this.options.pixelRatio = Math.round(Math.max(this.options.pixelRatio, 1));
 
     const { width, height, maskImage } = this.options;
@@ -86,10 +98,9 @@ export class TagCloud {
     this.$canvas = document.createElement("canvas");
     this.$canvas.width = width;
     this.$canvas.height = height;
-    this.$canvas.style.visibility = 'hidden';
+    this.$canvas.style.visibility = "hidden";
     this.ctx = this.$canvas.getContext("2d")!;
-    this.ctx.textAlign = 'center';
-
+    this.ctx.textAlign = "center";
 
     if (maskImage) {
       const $img: HTMLImageElement = new Image();
@@ -105,8 +116,8 @@ export class TagCloud {
     } else {
       this.pixels = this.generatePixels(width, height, 0, false);
     }
-    this.$container.classList.add('tag-cloud');
-    this.$container.style.overflow = 'hidden';
+    this.$container.classList.add("tag-cloud");
+    this.$container.style.overflow = "hidden";
     this.$container.append(this.$canvas);
   }
 
@@ -144,28 +155,27 @@ export class TagCloud {
   private layout(data: TagData[]) {
     const fragment = document.createDocumentFragment();
     for (let i = 0, len = data.length; i < len; i++) {
-      const current = data[i]
+      const current = data[i];
       if (!current.rendered) continue;
-      const $tag = document.createElement('span');
+      const $tag = document.createElement("span");
       fragment.append($tag);
       $tag.innerText = current.text;
       $tag.style.color = current.color;
-      $tag.style.justifyContent = 'center';
-      $tag.style.alignItems = 'center';
-      $tag.style.lineHeight = 'normal';
+      $tag.style.justifyContent = "center";
+      $tag.style.alignItems = "center";
+      $tag.style.lineHeight = "normal";
       $tag.style.fontSize = `${current.fontSize}px`;
-      $tag.style.position = 'absolute';
+      $tag.style.position = "absolute";
       $tag.style.transform = `translate(calc(-50%), calc(-50%)) rotate(${-current.angle}deg)`;
       $tag.style.left = `${current.x}px`;
       $tag.style.top = `${current.y}px`;
       $tag.style.fontFamily = `${this.options.family}`;
-      $tag.style.whiteSpace = 'pre';
+      $tag.style.whiteSpace = "pre";
 
-      $tag.classList.add('tag-colud__tag');
+      $tag.classList.add("tag-colud__tag");
 
-      $tag.addEventListener('click', this.onClick.bind(this, current));
+      $tag.addEventListener("click", this.onClick.bind(this, current));
     }
-
 
     this.$container.append(fragment);
   }
@@ -174,7 +184,7 @@ export class TagCloud {
     this.listeners.push(listener);
     return () => {
       this.unclick(listener);
-    }
+    };
   }
 
   public unclick(listener: Function) {
@@ -189,31 +199,22 @@ export class TagCloud {
       if (fn instanceof Function) {
         fn(tagData);
       }
-    })
+    });
   }
 
   public shape(cb: (ctx: CanvasRenderingContext2D) => void) {
-    const {
-      width,
-      height,
-    } = this.options;
+    const { width, height } = this.options;
     this.ctx.clearRect(0, 0, width, height);
     cb(this.ctx);
     const imgData = this.ctx.getImageData(0, 0, width, width);
-    this.pixels = this.getPixelsFromImgData(
-      imgData,
-      2,
-      255 * 3,
-      -1,
-      false
-    );
+    this.pixels = this.getPixelsFromImgData(imgData, 2, 255 * 3, -1, false);
   }
 
   private generatePixels(
     width: number,
     height: number,
     fill: -1 | 0 = 0,
-    forTag: boolean = true,
+    forTag: boolean = true
   ): Pixels {
     const { pixelRatio, cut } = this.options;
     const pixelXLength = Math.ceil(width / pixelRatio);
@@ -222,7 +223,12 @@ export class TagCloud {
 
     const len = Math.ceil(pixelXLength / 32);
     const tailOffset = pixelXLength % 32;
-    const tailFill = (forTag || tailOffset === 0) ? fill : cut ? fill & (-1 << 32 - tailOffset) : fill | (-1 >>> tailOffset);
+    const tailFill =
+      forTag || tailOffset === 0
+        ? fill
+        : cut
+        ? fill & (-1 << (32 - tailOffset))
+        : fill | (-1 >>> tailOffset);
 
     for (let i = 0; i < pixelYLength; i++) {
       const xData = new Array(len).fill(fill);
@@ -252,22 +258,24 @@ export class TagCloud {
     const fontSize =
       diffWeight > 0
         ? Math.round(
-          minFontSize +
-          (maxFontSize - minFontSize) *
-          ((weight - minTagWeight) / diffWeight)
-        )
+            minFontSize +
+              (maxFontSize - minFontSize) *
+                ((weight - minTagWeight) / diffWeight)
+          )
         : Math.round((maxFontSize + minFontSize) / 2);
 
     const randomNum = (Math.random() * angleCount) >> 0;
     const angle =
       maybeAngle === undefined
-        ? (angleCount === 1) ? angleFrom : (angleFrom + (randomNum / (angleCount - 1)) * (angleTo - angleFrom))
+        ? angleCount === 1
+          ? angleFrom
+          : angleFrom + (randomNum / (angleCount - 1)) * (angleTo - angleFrom)
         : maybeAngle;
 
     const color =
       maybeColor === undefined
         ? "#" +
-        (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
+          (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
         : maybeColor;
 
     const pixels = this.getTagPixels({
@@ -275,7 +283,7 @@ export class TagCloud {
       angle,
       fontSize,
       color,
-      padding,
+      padding
     });
 
     const result: TagData = {
@@ -286,14 +294,14 @@ export class TagCloud {
       color,
       x: -1,
       y: -1,
-      rendered: false,
+      rendered: false
     };
     if (pixels === null) return result;
 
     const [x, y] = this.placeTag(pixels);
     if (!isNaN(x)) {
-      result.x = x + pixels.width / 2 >> 0;
-      result.y = y + pixels.height / 2 >> 0;
+      result.x = (x + pixels.width / 2) >> 0;
+      result.y = (y + pixels.height / 2) >> 0;
       result.rendered = true;
       this.ctx.save();
     }
@@ -307,16 +315,19 @@ export class TagCloud {
     // const startX = Math.random() * width >> 0;
     // const startY = Math.random() * height >> 0;
 
-    const startX = (width - pixels.width) / 2 >> 0;
-    const startY = (height - pixels.height) / 2 >> 0;
+    const startX = ((width - pixels.width) / 2) >> 0;
+    const startY = ((height - pixels.height) / 2) >> 0;
 
-    const endLen = Math.max(startX, width - startX, startY, height - startY) / pixelRatio + 1 >> 0;
+    const endLen =
+      (Math.max(startX, width - startX, startY, height - startY) / pixelRatio +
+        1) >>
+      0;
 
     let x = startX;
     let y = startY;
 
     if (this.tryPlaceTag(pixels, x, y)) {
-      return [x, y]
+      return [x, y];
     }
 
     let step = 1;
@@ -326,31 +337,33 @@ export class TagCloud {
     const { width: pixelsWidth, height: pixelsHeight } = pixels;
 
     const whRate = height / width;
-    while ((step >> 1) < endLen) {
+    while (step >> 1 < endLen) {
       let rest = step;
       if (y < -pixelsHeight || y > height) {
         x += xDir * pixelRatio * rest;
-      } else while (rest--) {
-        x += xDir * pixelRatio;
-        if (x < -pixelsWidth || x > width) continue;
-        if (this.tryPlaceTag(pixels, x, y)) {
-          return [x, y];
+      } else
+        while (rest--) {
+          x += xDir * pixelRatio;
+          if (x < -pixelsWidth || x > width) continue;
+          if (this.tryPlaceTag(pixels, x, y)) {
+            return [x, y];
+          }
         }
-      }
 
       xDir = -xDir;
-      rest = step * whRate >> 0;
+      rest = (step * whRate) >> 0;
 
       if (x < -pixelsWidth || x > width) {
         y += yDir * pixelRatio * rest;
-      } else while (rest--) {
-        y += yDir * pixelRatio;
-        if (y < -pixelsHeight || y > height) continue;
+      } else
+        while (rest--) {
+          y += yDir * pixelRatio;
+          if (y < -pixelsHeight || y > height) continue;
 
-        if (this.tryPlaceTag(pixels, x, y)) {
-          return [x, y];
+          if (this.tryPlaceTag(pixels, x, y)) {
+            return [x, y];
+          }
         }
-      }
 
       yDir = -yDir;
       step++;
@@ -370,25 +383,28 @@ export class TagCloud {
     const out = cut ? 0 : -1;
 
     for (let i = 0, len = data.length; i < len; i++) {
-      const yData = thisData[pixelsY + i] === undefined ? [] : thisData[pixelsY + i];
+      const yData =
+        thisData[pixelsY + i] === undefined ? [] : thisData[pixelsY + i];
       for (let j = 0, len = data[i].length; j < len; j++) {
         const current = yData[xx + j] === undefined ? out : yData[xx + j];
-        const next = (yData[xx + j + 1] === undefined ? out : yData[xx + j + 1]) & fix;
-        if ((current << offset | next >>> 32 - offset) & data[i][j]) {
+        const next =
+          (yData[xx + j + 1] === undefined ? out : yData[xx + j + 1]) & fix;
+        if (((current << offset) | (next >>> (32 - offset))) & data[i][j]) {
           return false;
         }
       }
     }
-   
+
     for (let i = 0, len = data.length; i < len; i++) {
-      const yData = thisData[pixelsY + i] === undefined ? [] : thisData[pixelsY + i];
+      const yData =
+        thisData[pixelsY + i] === undefined ? [] : thisData[pixelsY + i];
       for (let j = 0, len = data[i].length; j < len; j++) {
         const target = data[i][j];
         if (yData[xx + j] !== undefined) {
           yData[xx + j] |= target >>> offset;
         }
         if (yData[xx + j + 1] !== undefined && offset) {
-          yData[xx + j + 1] |= target << 32 - offset;
+          yData[xx + j + 1] |= target << (32 - offset);
         }
       }
     }
@@ -425,9 +441,13 @@ export class TagCloud {
     const heightWithPadding = height + padding;
 
     const pixelWidth =
-      (Math.abs(heightWithPadding * sinTheta) + Math.abs(widthWithPadding * cosTheta)) >> 0;
+      (Math.abs(heightWithPadding * sinTheta) +
+        Math.abs(widthWithPadding * cosTheta)) >>
+      0;
     const pixelHeight =
-      (Math.abs(heightWithPadding * cosTheta) + Math.abs(widthWithPadding * sinTheta)) >> 0;
+      (Math.abs(heightWithPadding * cosTheta) +
+        Math.abs(widthWithPadding * sinTheta)) >>
+      0;
 
     if (pixelHeight > this.options.height || pixelWidth > this.options.width) {
       return null;
@@ -439,16 +459,8 @@ export class TagCloud {
     this.ctx.fillStyle = color;
     this.ctx.lineWidth = padding;
 
-    this.ctx.strokeText(
-      text,
-      0,
-      height / 2 - fontBoundingBoxDescent
-    );
-    this.ctx.fillText(
-      text,
-      0,
-      height / 2 - fontBoundingBoxDescent
-    );
+    this.ctx.strokeText(text, 0, height / 2 - fontBoundingBoxDescent);
+    this.ctx.fillText(text, 0, height / 2 - fontBoundingBoxDescent);
     this.ctx.restore();
 
     const imgData: ImageData = this.ctx.getImageData(
@@ -534,13 +546,7 @@ export class TagCloud {
   }
 
   private loadMaskImage($maskImage: HTMLImageElement): Pixels {
-    const {
-      width,
-      height,
-      opacityThreshold,
-      lightThreshold
-    } = this.options;
-
+    const { width, height, opacityThreshold, lightThreshold } = this.options;
 
     this.ctx.clearRect(0, 0, width, height);
     this.ctx.drawImage($maskImage, 0, 0, width, height);
@@ -564,7 +570,7 @@ export class TagCloud {
   private binaryStrIfy(num: number): string {
     if (num >= 0) {
       const numStr = num.toString(2);
-      return (ZERO_STR.slice(0, 32 - numStr.length) + numStr);
+      return ZERO_STR.slice(0, 32 - numStr.length) + numStr;
     }
     return (Math.pow(2, 32) + num).toString(2);
   }
