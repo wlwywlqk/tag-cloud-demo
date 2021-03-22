@@ -13,6 +13,7 @@ export interface Options {
   family: string;
   cut: boolean;
   padding: number;
+  canvas: boolean;
 }
 
 export interface Tag {
@@ -37,7 +38,7 @@ export interface TagData extends Required<Tag> {
 }
 
 const ZERO_STR = "00000000000000000000000000000000";
-
+const TIMEOUT_MS = 100;
 export class TagCloud {
   private readonly defaultOptions: Options = {
     width: 0,
@@ -53,12 +54,16 @@ export class TagCloud {
     angleCount: 3,
     family: "sans-serif",
     cut: false,
-    padding: 10
+    padding: 5,
+    canvas: false,
   };
   options: Options;
   private $container: HTMLElement;
+  private $wrapper: HTMLElement;
   private $canvas: HTMLCanvasElement;
+  private $displayCanvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private displayCtx: CanvasRenderingContext2D;
 
   private listeners: Function[] = [];
 
@@ -94,14 +99,36 @@ export class TagCloud {
     this.options.pixelRatio = Math.round(Math.max(this.options.pixelRatio, 1));
 
     const { width, height, maskImage } = this.options;
+    this.$wrapper = document.createElement("div");
+    this.$wrapper.style.width = `${width}px`;
+    this.$wrapper.style.height = `${height}px`;
 
     this.$canvas = document.createElement("canvas");
     this.$canvas.width = width;
     this.$canvas.height = height;
-    this.$canvas.style.visibility = "hidden";
+    this.$canvas.style.display = "none";
+
+    this.$displayCanvas = document.createElement("canvas");
+    this.$displayCanvas.width = width;
+    this.$displayCanvas.height = height;
+
     this.ctx = this.$canvas.getContext("2d")!;
     this.ctx.textAlign = "center";
 
+    this.displayCtx = this.$displayCanvas.getContext("2d")!;
+    this.displayCtx.textAlign = "center";
+
+    this.$container.classList.add("tag-cloud");
+    this.$container.style.overflow = "hidden";
+    this.$container.append(this.$canvas);
+    this.$container.append(this.$displayCanvas);
+    this.$container.append(this.$wrapper);
+
+    this.init();
+  }
+
+  private init() {
+    const { width, height, maskImage } = this.options;
     if (maskImage) {
       const $img: HTMLImageElement = new Image();
       this.promised = new Promise((resolve, reject) => {
@@ -116,20 +143,10 @@ export class TagCloud {
     } else {
       this.pixels = this.generatePixels(width, height, 0, false);
     }
-    this.$container.classList.add("tag-cloud");
-    this.$container.style.overflow = "hidden";
-    this.$container.append(this.$canvas);
-  }
-
-  public destory() {
-    if (this.$container) {
-      this.$container.removeChild(this.$canvas);
-    }
   }
 
   public async draw(tags: Tag[] = []): Promise<TagData[]> {
     if (tags.length === 0) return [];
-    const result: TagData[] = [];
     await this.promised;
     for (let i = 0, len = tags.length; i < len; i++) {
       const { weight } = tags[i];
@@ -140,19 +157,89 @@ export class TagCloud {
         this.minTagWeight = weight;
       }
     }
-
-    const sortTags = tags.sort((a, b) => b.weight - a.weight);
-    for (let i = 0, len = sortTags.length; i < len; i++) {
-      const tagData = this.handleTag(sortTags[i]);
-      result.push(tagData);
-    }
-
-    this.layout(result);
-
+    const result = await this.performDraw(tags);
     return result;
   }
 
-  private layout(data: TagData[]) {
+  public clear() {
+    const { width, height } = this.options;
+    this.$wrapper.innerHTML = '';
+    this.displayCtx.clearRect(0, 0, width, height);
+    this.init();
+  }
+
+  public destory() {
+    if (this.$container) {
+      this.$container.removeChild(this.$canvas);
+    }
+  }
+  
+  public shape(cb: (ctx: CanvasRenderingContext2D) => void) {
+    const { width, height } = this.options;
+    this.ctx.clearRect(0, 0, width, height);
+    cb(this.ctx);
+    const imgData = this.ctx.getImageData(0, 0, width, width);
+    this.pixels = this.getPixelsFromImgData(imgData, 2, 255 * 3, -1, false);
+  }
+
+
+  private async performDraw(tags: Tag[] = []): Promise<TagData[]> {
+    const sortTags = tags.sort((a, b) => b.weight - a.weight);
+    const result: TagData[] = [];
+    let partial: TagData[] = [];
+
+    let expired = performance.now() + TIMEOUT_MS;
+    for (let i = 0, len = sortTags.length; i < len; i++) {
+      const tagData = this.handleTag(sortTags[i]);
+      const now = performance.now();
+      result.push(tagData);
+      partial.push(tagData);
+      if (now > expired) {
+        this.layout(partial);
+        partial = [];
+        await new Promise((r) => { setTimeout(r); });
+        expired = now + TIMEOUT_MS;
+      }
+
+    }
+    this.layout(partial);
+    return result;
+  }
+
+  private layout(data: TagData[]): void {
+    if (this.options.canvas) {
+      this.layoutByCanvas(data);
+    } else {
+      this.layoutByDom(data);
+    }
+  }
+
+  private layoutByCanvas(data: TagData[]) {
+    const { family } = this.options;
+    for (let i = 0, len = data.length; i < len; i++) {
+      const current = data[i];
+      if (!current.rendered) continue;
+      const { angle, color, fontSize, text, x, y } = current;
+      this.displayCtx.save();
+      const theta = (-angle * Math.PI) / 180;
+      this.displayCtx.font = `${fontSize}px ${family}`;
+      const textMetrics: TextMetrics = this.displayCtx.measureText(text);
+      const {
+        fontBoundingBoxAscent,
+        fontBoundingBoxDescent,
+      } = textMetrics;
+      const height = fontBoundingBoxAscent + fontBoundingBoxDescent;
+
+      this.displayCtx.translate(x, y);
+      this.displayCtx.rotate(theta);
+      this.displayCtx.fillStyle = color;
+
+      this.displayCtx.fillText(text, 0, height / 2 - fontBoundingBoxDescent);
+      this.displayCtx.restore();
+    }
+  }
+
+  private layoutByDom(data: TagData[]) {
     const fragment = document.createDocumentFragment();
     for (let i = 0, len = data.length; i < len; i++) {
       const current = data[i];
@@ -173,18 +260,20 @@ export class TagCloud {
       $tag.style.whiteSpace = "pre";
 
       $tag.classList.add("tag-colud__tag");
-
       $tag.addEventListener("click", this.onClick.bind(this, current));
     }
 
-    this.$container.append(fragment);
+    this.$wrapper.append(fragment);
   }
 
   public click(listener: Function) {
-    this.listeners.push(listener);
-    return () => {
-      this.unclick(listener);
-    };
+    if (listener instanceof Function) {
+      this.listeners.push(listener);
+      return () => {
+        this.unclick(listener);
+      };
+    }
+    return () => { }
   }
 
   public unclick(listener: Function) {
@@ -195,19 +284,9 @@ export class TagCloud {
   }
 
   private onClick(tagData: TagData) {
-    this.listeners.forEach((fn: unknown) => {
-      if (fn instanceof Function) {
-        fn(tagData);
-      }
+    this.listeners.forEach((fn: Function) => {
+      fn(tagData);
     });
-  }
-
-  public shape(cb: (ctx: CanvasRenderingContext2D) => void) {
-    const { width, height } = this.options;
-    this.ctx.clearRect(0, 0, width, height);
-    cb(this.ctx);
-    const imgData = this.ctx.getImageData(0, 0, width, width);
-    this.pixels = this.getPixelsFromImgData(imgData, 2, 255 * 3, -1, false);
   }
 
   private generatePixels(
@@ -227,8 +306,8 @@ export class TagCloud {
       forTag || tailOffset === 0
         ? fill
         : cut
-        ? fill & (-1 << (32 - tailOffset))
-        : fill | (-1 >>> tailOffset);
+          ? fill & (-1 << (32 - tailOffset))
+          : fill | (-1 >>> tailOffset);
 
     for (let i = 0; i < pixelYLength; i++) {
       const xData = new Array(len).fill(fill);
@@ -258,10 +337,10 @@ export class TagCloud {
     const fontSize =
       diffWeight > 0
         ? Math.round(
-            minFontSize +
-              (maxFontSize - minFontSize) *
-                ((weight - minTagWeight) / diffWeight)
-          )
+          minFontSize +
+          (maxFontSize - minFontSize) *
+          ((weight - minTagWeight) / diffWeight)
+        )
         : Math.round((maxFontSize + minFontSize) / 2);
 
     const randomNum = (Math.random() * angleCount) >> 0;
@@ -275,7 +354,7 @@ export class TagCloud {
     const color =
       maybeColor === undefined
         ? "#" +
-          (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
+        (((0xffff00 * Math.random()) >> 0) + 0x1000000).toString(16).slice(1)
         : maybeColor;
 
     const pixels = this.getTagPixels({

@@ -6,29 +6,31 @@ const tagCloud = new TagCloud($container, {
   width: 500,
   height: 500,
   // maskImage: MASK,
-  minFontSize: 16,
-  maxFontSize: 90,
-  angleCount: 6,
+  minFontSize: 14,
+  maxFontSize: 77,
+  angleCount: 3,
   angleFrom: -60,
   angleTo: 60,
-  padding: 4,
-  family: "zillaslab"
+  padding: 2,
+  canvas: false,
+  family: "Tahoma",
 });
 
-// tagCloud.shape((ctx: CanvasRenderingContext2D) => {
-//   ctx.arc(250,250,100,0, Math.PI * 2);
-//   ctx.fill()
-// });
+tagCloud.shape((ctx: CanvasRenderingContext2D) => {
+  ctx.arc(250, 250, 200, 0, Math.PI * 2);
+  ctx.fill();
+});
 
 tagCloud.click((tag: TagData) => {
   console.log(tag);
 });
 
 tagCloud.draw([
-  { text: "Web", weight: 100 },
-  { text: "Node.js", weight: 100 },
+  { text: "Web", weight: 100, color: 'red' },
+  { text: "Node.js", weight: 100, color: 'rgba(0,0,0,1)', angle: 90 },
   { text: "HTML", weight: 100 },
-  { text: "javascirpt", weight: 100 },
+  { text: "Css", weight: 100 },
+  { text: "javascript", weight: 100 },
   { text: "JS", weight: 100 },
   { text: "React", weight: 10 },
   { text: "Vue", weight: 10 },
@@ -66,7 +68,6 @@ tagCloud.draw([
   { text: "then", weight: 20 },
   { text: "DOM", weight: 20 },
   { text: "new", weight: 20 },
-  { text: "throw", weight: 20 },
   { text: "throw", weight: 20 },
   { text: "define", weight: 20 },
   { text: "center", weight: 20 },
