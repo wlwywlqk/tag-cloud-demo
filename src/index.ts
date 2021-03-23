@@ -1,13 +1,13 @@
-import { TagCloud, TagData } from "./tagCloud";
+import { Tag2Cloud, TagData } from "tag2cloud";
 import MASK from "./panda.png";
 const $container = document.querySelector("#app")! as HTMLElement;
 
-const tagCloud = new TagCloud($container, {
+const tag2Cloud = new Tag2Cloud($container, {
   width: 500,
   height: 500,
   // maskImage: MASK,
   minFontSize: 14,
-  maxFontSize: 77,
+  maxFontSize: 72,
   angleCount: 3,
   angleFrom: -60,
   angleTo: 60,
@@ -16,19 +16,19 @@ const tagCloud = new TagCloud($container, {
   family: "Tahoma",
 });
 
-tagCloud.shape((ctx: CanvasRenderingContext2D) => {
+tag2Cloud.shape((ctx: CanvasRenderingContext2D) => {
   ctx.arc(250, 250, 200, 0, Math.PI * 2);
   ctx.fill();
 });
 
-tagCloud.click((tag: TagData) => {
+tag2Cloud.onClick((tag: TagData) => {
   console.log(tag);
 });
 
-tagCloud.draw([
+tag2Cloud.draw([
   { text: "Web", weight: 100, color: 'red' },
   { text: "Node.js", weight: 100, color: 'rgba(0,0,0,1)', angle: 90 },
-  { text: "HTML", weight: 100 },
+  { text: "HTML", weight: 100, angle: 180 },
   { text: "Css", weight: 100 },
   { text: "javascript", weight: 100 },
   { text: "JS", weight: 100 },
