@@ -1,4 +1,4 @@
-import { Tag2Cloud, TagData } from "tag2cloud";
+import { Tag2Cloud, TagData } from "./tag2Cloud";
 import MASK from "./panda.png";
 const $container = document.querySelector("#app")! as HTMLElement;
 
