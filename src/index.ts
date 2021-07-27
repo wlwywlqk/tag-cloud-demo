@@ -5,7 +5,7 @@ const $container = document.querySelector("#app")! as HTMLElement;
 const tag2Cloud = new Tag2Cloud($container, {
   width: 500,
   height: 500,
-  // maskImage: MASK,
+  maskImage: MASK,
   minFontSize: 14,
   maxFontSize: 72,
   angleCount: 3,
@@ -17,8 +17,8 @@ const tag2Cloud = new Tag2Cloud($container, {
 });
 
 tag2Cloud.shape((ctx: CanvasRenderingContext2D) => {
-  ctx.arc(250, 250, 200, 0, Math.PI * 2);
-  ctx.fill();
+//   ctx.arc(250, 250, 200, 0, Math.PI * 2);
+//   ctx.fill();
 });
 
 tag2Cloud.onClick((tag: TagData) => {
